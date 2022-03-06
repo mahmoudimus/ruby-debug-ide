@@ -19,10 +19,30 @@ module Debugger
 
   class << self
     def find_free_port(host)
-      server = TCPServer.open(host, 0)
-      port   = server.addr[1]
-      server.close
-      port
+      # All the possible ports randomly sorted.
+      possible_port_numbers = (58430..58450).to_a.shuffle
+
+      # Loop over each port until we find an open port.
+      possible_port_numbers.each do |ppn|
+        begin
+          print_debug("Checking if port is free: #{ppn}\n")
+
+          server = TCPServer.open(host, ppn)
+          port   = server.addr[1]
+          server.close
+
+          # Open port found.
+          print_debug("Port #{ppn} is free.\n")
+          return port
+        rescue ArgumentError
+          # Port is in use.  Swallow the error and try
+          # another port.
+          print_debug("Port #{ppn} is in use.\n")
+        end
+      end
+
+      # Tried all the ports and couldn't find a free one.
+      raise "Unable to find free port."
     end
 
     # Prints to the stderr using printf(*args) if debug logging flag (-d) is on.
@@ -198,7 +218,14 @@ module Debugger
 
       3.times do |i|
         begin
-          s = TCPSocket.open(acceptor_host, acceptor_port)
+          # Try to connect using the host IP address.  If that fails
+          # then assume we are on a Mac and try the internal DNS.
+          begin
+            s = TCPSocket.open(acceptor_host, acceptor_port)
+          rescue
+            # Assume we are on a Mac and try the internal host DNS.
+            s = TCPSocket.open('host.docker.internal', acceptor_port)
+          end
           dispatcher_answer = s.gets.chomp
 
           if dispatcher_answer == "true"
